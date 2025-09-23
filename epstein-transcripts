@@ -1,0 +1,8 @@
+epstein-transcripts/
+├── README.md
+├── requirements.txt
+├── fetch_transcripts.py
+├── .github/
+│   └── workflows/
+│       └── run.yml
+└── .env.example
