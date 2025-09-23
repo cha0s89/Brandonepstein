@@ -25,7 +25,7 @@ jobs:
       - name: Run fetcher (no API key needed)
         env:
           # Optional: change to a different channel or playlist URL if you want.
-          CHANNEL_URL: https://www.youtube.com/@BrandonEpsteinOfficial/videos
+          CHANNEL_URL: https://www.youtube.com/@BrandonEpstein_/videos
         run: |
           python fetch_transcripts.py
 
