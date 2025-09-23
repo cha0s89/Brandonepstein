@@ -1,0 +1,39 @@
+name: Fetch Transcripts
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 17 * * 1"  # Mondays 9:00 AM Pacific
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run fetcher (no API key needed)
+        env:
+          # Optional: change to a different channel or playlist URL if you want.
+          CHANNEL_URL: https://www.youtube.com/@BrandonEpsteinOfficial/videos
+        run: |
+          python fetch_transcripts.py
+
+      - name: Upload artifact (merged + per-episode + index)
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrandonEpstein_Transcripts
+          path: |
+            output/BrandonEpstein_ALL_Transcripts.txt
+            output/episodes/
+            output/index.json
