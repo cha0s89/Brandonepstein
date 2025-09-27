@@ -8,6 +8,7 @@ MAX_VIDEOS = int(os.getenv("MAX_VIDEOS", "0") or "0")
 OUTDIR = Path("data/transcripts/youtube/brandonepstein")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
+
 def safe_name(s: str) -> str:
     s = re.sub(r"[\\/:*?\"<>|]+", "_", s)
     s = re.sub(r"\s+", " ", s).strip()
