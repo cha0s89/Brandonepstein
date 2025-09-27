@@ -91,8 +91,10 @@ def main():
         if re.fullmatch(r"\d{8}", upload_date):
             upload_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:]}"
 
-        fname = f"{upload_date + ' - ' if upload_date else ''}{safe_name(title)} [{vid}].txt"
-        fpath = OUTDIR / fname
+        folder = OUTDIR / f"{upload_date + ' - ' if upload_date else ''}{safe_name(title)} [{video_id}]"
+folder.mkdir(parents=True, exist_ok=True)
+fpath = folder / "transcript.txt"
+
         if fpath.exists():
             print(f"Skip existing: {fname}")
             continue
