@@ -47,7 +47,7 @@ jobs:
 
       - name: Fetch transcripts from YouTube (primary API path)
         env:
-          YT_SOURCE: https://www.youtube.com/@BrandonEpstein_/videos
+          YT_SOURCE: https://www.youtube.com/@richroll/videos
           MAX_VIDEOS: "5"
         run: |
           python scripts/fetch_youtube_transcripts.py
