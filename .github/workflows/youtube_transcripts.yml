@@ -3,9 +3,8 @@ name: Fetch YouTube transcripts
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 9 * * 1"   # Mondays 09:00 UTC
+    - cron: "0 9 * * 1"
 
-# IMPORTANT: allow the job to push commits
 permissions:
   contents: write
 
@@ -15,13 +14,24 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Show repo tree (debug)
+      - name: Show repo tree (before)
         run: |
           pwd
+          git status
           ls -la
-          echo "---- scripts dir ----"
-          ls -la scripts || true
+          echo "---- .gitignore ----"
+          [ -f .gitignore ] && cat .gitignore || echo "(no .gitignore)"
+
+      - name: Ensure .gitignore does NOT exclude data/
+        run: |
+          touch .gitignore
+          # remove any line that ignores data/ or transcripts/
+          sed -i '/^data\/$/d;/^data\/\*$/d;/^transcripts\/$/d;/^transcripts\/\*$/d' .gitignore
+          # explicitly allow our output path
+          grep -qxF '!data/transcripts/**' .gitignore || echo '!data/transcripts/**' >> .gitignore
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -35,15 +45,27 @@ jobs:
 
       - name: Fetch transcripts from YouTube
         env:
-          # Set this to the channel or playlist you want
-          # Example: Brandon Epstein channel tab or Rich Roll:
-          # YT_SOURCE: https://www.youtube.com/@BrandonEpstein/videos
-          # YT_SOURCE: https://www.youtube.com/@RichRoll/videos
-          YT_SOURCE: https://www.youtube.com/@BrandonEpstein_/videos
-          # Quick test limit; remove or make "" later to process all
-          MAX_VIDEOS: "5"
+          # Paste the correct Videos tab URL:
+          YT_SOURCE: https://www.youtube.com/@YOUR_HANDLE/videos
+          MAX_VIDEOS: "5"   # test limit
         run: |
           python scripts/fetch_youtube_transcripts.py
+
+      - name: Show repo tree (after)
+        run: |
+          echo "---- data/transcripts/youtube ----"
+          ls -laR data/transcripts/youtube || true
+          echo "---- git status ----"
+          git status
+
+      # Always upload an artifact so you can download it from the Actions run page
+      - name: Upload transcripts artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-transcripts
+          path: |
+            data/transcripts/youtube
+          if-no-files-found: warn
 
       - name: Commit & push transcript updates
         run: |
