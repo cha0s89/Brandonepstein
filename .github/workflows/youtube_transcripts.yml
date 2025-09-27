@@ -42,12 +42,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install yt-dlp "youtube-transcript-api>=0.6.2,<1.0.0"
-          python -c "import youtube_transcript_api; print('youtube-transcript-api version:', youtube_transcript_api.__version__)"
+          python -c "import importlib.metadata as m; print('yt-dlp version:', m.version('yt-dlp')); print('youtube-transcript-api version:', m.version('youtube-transcript-api'))"
 
       - name: Fetch transcripts from YouTube
         env:
-          YT_SOURCE: https://www.youtube.com/@BrandonEpstein_/videos
-          MAX_VIDEOS: "5"
+          YT_SOURCE: https://www.youtube.com/@BrandonEpstein_/videos  # <-- your exact channel
+          MAX_VIDEOS: "5"  # quick test; set to "" later to pull all
         run: |
           python scripts/fetch_youtube_transcripts.py
 
@@ -76,4 +76,3 @@ jobs:
           else
             echo "No changes to commit."
           fi
-
