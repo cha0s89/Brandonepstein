@@ -38,17 +38,16 @@ jobs:
         with:
           python-version: "3.11"
 
-            - name: Install deps
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install yt-dlp "youtube-transcript-api>=0.6.2,<1.0.0"
-          python -c "import youtube_transcript_api, pkgutil; import sys; print('youtube-transcript-api version:', youtube_transcript_api.__version__)"
+          python -c "import youtube_transcript_api; print('youtube-transcript-api version:', youtube_transcript_api.__version__)"
 
       - name: Fetch transcripts from YouTube
         env:
-          # Paste the correct Videos tab URL:
           YT_SOURCE: https://www.youtube.com/@BrandonEpstein_/videos
-          MAX_VIDEOS: "5"   # test limit
+          MAX_VIDEOS: "5"
         run: |
           python scripts/fetch_youtube_transcripts.py
 
@@ -59,13 +58,11 @@ jobs:
           echo "---- git status ----"
           git status
 
-      # Always upload an artifact so you can download it from the Actions run page
       - name: Upload transcripts artifact
         uses: actions/upload-artifact@v4
         with:
           name: youtube-transcripts
-          path: |
-            data/transcripts/youtube
+          path: data/transcripts/youtube
           if-no-files-found: warn
 
       - name: Commit & push transcript updates
@@ -79,3 +76,4 @@ jobs:
           else
             echo "No changes to commit."
           fi
+
