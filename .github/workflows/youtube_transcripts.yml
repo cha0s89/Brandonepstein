@@ -38,10 +38,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install deps
+            - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install yt-dlp youtube-transcript-api
+          pip install yt-dlp "youtube-transcript-api>=0.6.2,<1.0.0"
+          python -c "import youtube_transcript_api, pkgutil; import sys; print('youtube-transcript-api version:', youtube_transcript_api.__version__)"
 
       - name: Fetch transcripts from YouTube
         env:
