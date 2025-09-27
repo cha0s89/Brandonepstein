@@ -34,12 +34,6 @@ def main():
         print("No last_run.json; nothing to do.")
         return
 
-    stats = json.loads(LAST_RUN.read_text(encoding="utf-8"))
-    ids = stats.get("processed_ids", [])
-    if not ids:
-        print("No processed IDs; nothing to do.")
-        return
-
     filled = 0
     for folder in OUTDIR.iterdir():
         if not folder.is_dir() or not folder.name.endswith("]"):
@@ -51,11 +45,9 @@ def main():
             continue
 
         url = f"https://www.youtube.com/watch?v={vid}"
-        vtt_out = TMP / f"{vid}.en.vtt"
-
+        # Try to fetch manual or auto EN captions to VTT
         try:
-            if vtt_out.exists():
-                vtt_out.unlink()
+            # fetch into TMP; yt-dlp will name the file as <id>.<lang>.vtt or <id>.vtt
             run([
                 "yt-dlp",
                 "--skip-download",
@@ -69,24 +61,22 @@ def main():
             print(f"yt-dlp captions failed for {vid}: {e}")
             continue
 
-        produced = None
-        cand1 = TMP / f"{vid}.en.vtt"
-        cand2 = TMP / f"{vid}.vtt"
-        if cand1.exists():
-            produced = cand1
-        elif cand2.exists():
-            produced = cand2
-        else:
-            vtts = list(TMP.glob(f"{vid}.*.vtt")) + list(TMP.glob(f"{vid}.vtt"))
-            if vtts:
-                produced = vtts[0]
-
-        if not produced or not produced.exists():
+        # Find a produced VTT
+        vtt = None
+        for p in [
+            TMP / f"{vid}.en.vtt",
+            TMP / f"{vid}.vtt",
+            *TMP.glob(f"{vid}.*.vtt")
+        ]:
+            if p.exists():
+                vtt = p
+                break
+        if not vtt:
             print(f"No VTT produced for {vid}.")
             continue
 
         try:
-            text = vtt_to_txt(produced)
+            text = vtt_to_txt(vtt)
             if text.strip():
                 tfile.write_text(text, encoding="utf-8")
                 print(f"Saved transcript from VTT: {tfile}")
