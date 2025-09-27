@@ -14,31 +14,20 @@ def run(cmd):
         raise RuntimeError(f"Command failed: {' '.join(cmd)}")
 
 def vtt_to_txt(vtt_path: Path) -> str:
-    # super-simple VTT → txt with [mm:ss] timestamps
     lines = []
     ts_re = re.compile(r"(\d{2}):(\d{2}):(\d{2})\.\d+\s-->\s(\d{2}):(\d{2}):(\d{2})\.\d+")
     with vtt_path.open(encoding="utf-8", errors="ignore") as f:
         for line in f:
             line = line.rstrip("\n")
-            if not line or line.startswith("WEBVTT") or "-->" in line and ts_re.search(line):
-                # skip headers and cue timestamps (we’ll only add starts in merged text)
+            if not line or ("-->" in line and ts_re.search(line)) or line.startswith("WEBVTT"):
                 continue
-            if re.match(r"^\d+$", line):  # cue index numbers
+            if re.match(r"^\d+$", line):
                 continue
-            # remove HTML/italics tags
             line = re.sub(r"</?[^>]+>", "", line)
-            # collapse extra whitespace
             line = re.sub(r"\s+", " ", line).strip()
             if line:
                 lines.append(line)
-    # No exact per-line timestamps from VTT here (kept simple). If you want timestamps,
-    # we could parse cues and add [mm:ss]. This gets you clean readable text quickly.
     return "\n".join(lines)
-
-def safe_name(s: str) -> str:
-    s = re.sub(r"[\\/:*?\"<>|]+", "_", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s[:160]
 
 def main():
     if not LAST_RUN.exists():
@@ -53,9 +42,7 @@ def main():
 
     filled = 0
     for folder in OUTDIR.iterdir():
-        if not folder.is_dir():
-            continue
-        if not folder.name.endswith("]"):
+        if not folder.is_dir() or not folder.name.endswith("]"):
             continue
         vid = folder.name.split("[")[-1][:-1]
         tfile = folder / "transcript.txt"
@@ -66,7 +53,6 @@ def main():
         url = f"https://www.youtube.com/watch?v={vid}"
         vtt_out = TMP / f"{vid}.en.vtt"
 
-        # try to fetch manual or auto EN captions to VTT
         try:
             if vtt_out.exists():
                 vtt_out.unlink()
@@ -83,7 +69,6 @@ def main():
             print(f"yt-dlp captions failed for {vid}: {e}")
             continue
 
-        # Find a produced VTT (manual or auto). yt-dlp may name it with .en.vtt or just .vtt
         produced = None
         cand1 = TMP / f"{vid}.en.vtt"
         cand2 = TMP / f"{vid}.vtt"
@@ -92,7 +77,6 @@ def main():
         elif cand2.exists():
             produced = cand2
         else:
-            # try to find any *.vtt for this id
             vtts = list(TMP.glob(f"{vid}.*.vtt")) + list(TMP.glob(f"{vid}.vtt"))
             if vtts:
                 produced = vtts[0]
@@ -101,13 +85,11 @@ def main():
             print(f"No VTT produced for {vid}.")
             continue
 
-        # convert to txt and save as transcript.txt
         try:
             text = vtt_to_txt(produced)
             if text.strip():
                 tfile.write_text(text, encoding="utf-8")
                 print(f"Saved transcript from VTT: {tfile}")
-                # remove NO_TRANSCRIPT marker
                 try:
                     nofile.unlink()
                 except Exception:
@@ -118,7 +100,6 @@ def main():
         except Exception as e:
             print(f"Error converting VTT for {vid}: {e}")
 
-    # cleanup
     try:
         shutil.rmtree(TMP)
     except Exception:
