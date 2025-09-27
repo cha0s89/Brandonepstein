@@ -6,24 +6,12 @@ from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, No
 YT_SOURCE = os.getenv("YT_SOURCE", "").strip()
 MAX_VIDEOS = int(os.getenv("MAX_VIDEOS", "0") or "0")
 
-# Output: one folder per episode; idempotent + archived IDs
+# Output: one folder per episode; idempotent
 ROOT = Path("data/transcripts/youtube")
 OUTDIR = ROOT / "brandonepstein"
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
-ARCHIVE = ROOT / "archive_ids.txt"
-ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
-if not ARCHIVE.exists():
-    ARCHIVE.write_text("", encoding="utf-8")
-
-RUN_INDEX = ROOT / "last_run.json"  # we always update this, so there's something to commit
-
-def is_archived(video_id: str) -> bool:
-    return any(line.strip() == video_id for line in ARCHIVE.read_text(encoding="utf-8").splitlines())
-
-def mark_archived(video_id: str):
-    with ARCHIVE.open("a", encoding="utf-8") as f:
-        f.write(video_id + "\n")
+LAST_RUN = ROOT / "last_run.json"   # stats written every run
 
 def safe_name(s: str) -> str:
     s = re.sub(r"[\\/:*?\"<>|]+", "_", s)
@@ -49,6 +37,7 @@ def yt_dlp_json(cmd):
     return json.loads(r.stdout)
 
 def list_videos(url: str):
+    # Fast listing for /videos pages
     base_cmd = ["yt-dlp", "-J", "--flat-playlist", "--no-warnings", url]
     if MAX_VIDEOS > 0:
         base_cmd = ["yt-dlp", "-J", "--flat-playlist", "-I", f"1:{MAX_VIDEOS}", "--no-warnings", url]
@@ -58,6 +47,7 @@ def list_videos(url: str):
         entries = data.get("entries") or []
     except SystemExit:
         pass
+    # Fallback parse (some channels/layouts)
     if not entries:
         try:
             data2 = yt_dlp_json(["yt-dlp", "-J", "--no-warnings", url])
@@ -85,45 +75,36 @@ def list_videos(url: str):
 
 def fetch_transcript_chunks(video_id: str, langs=("en","en-US","en-GB")):
     """
-    Prefer manually-created English, then auto English, then translate-any-to-English.
-    Falls back to get_transcript() if list_transcripts isn't available in the installed package.
+    Prefer manual EN, then auto EN, then translate-any-to-EN.
+    If list_transcripts isn't available, fall back to get_transcript().
     """
-    # Try the modern API first
+    # Modern API
     try:
         tlist = YouTubeTranscriptApi.list_transcripts(video_id)
-
-        # Prefer human EN
         for lang in langs:
             try:
                 return tlist.find_manually_created_transcript([lang]).fetch()
-            except: 
+            except:
                 pass
-        # Fallback: auto EN
         for lang in langs:
             try:
                 return tlist.find_generated_transcript([lang]).fetch()
-            except: 
+            except:
                 pass
-        # Last resort: translate any to EN
         for t in tlist:
             if getattr(t, "is_translatable", False):
                 try:
                     return t.translate("en").fetch()
                 except:
                     pass
-
-        # If we reach here, no transcript via list_transcripts
         raise NoTranscriptFound("No available transcript (manual/auto/translated).")
-
     except AttributeError:
-        # Older package: use get_transcript API as a fallback
-        for lang in (["en", "en-US", "en-GB"]):
+        # Fallback for older packages (belt & suspenders; our workflow pins 0.6.3)
+        for lang in langs:
             try:
-                chunks = YouTubeTranscriptApi.get_transcript(video_id, languages=[lang])
-                return chunks
+                return YouTubeTranscriptApi.get_transcript(video_id, languages=[lang])
             except:
                 pass
-        # Try auto by requesting no language preference (may still fail)
         try:
             return YouTubeTranscriptApi.get_transcript(video_id)
         except Exception as e:
@@ -143,19 +124,14 @@ def main():
     videos = list_videos(src)
     print(f"Found {len(videos)} videos in source")
 
-    stats = {"source": src, "total_listed": len(videos), "saved": 0, "skipped_existing": 0,
-             "skipped_archived": 0, "no_transcript": 0, "errors": 0, "processed_ids": []}
+    stats = {"source": src, "total_listed": len(videos), "saved": 0,
+             "no_transcript": 0, "errors": 0, "processed_ids": []}
 
     for v in videos:
         vid = v["id"]
         if not vid:
             continue
         stats["processed_ids"].append(vid)
-
-        if is_archived(vid):
-            print(f"Skip archived: {vid}")
-            stats["skipped_archived"] += 1
-            continue
 
         title = v["title"]
         date = v["upload_date"]
@@ -165,14 +141,11 @@ def main():
         folder_name = f"{(date + ' - ') if date else ''}{safe_name(title)} [{vid}]"
         folder = OUTDIR / folder_name
         folder.mkdir(parents=True, exist_ok=True)
-        fpath = folder / "transcript.txt"
-        meta = folder / "metadata.txt"
+        tfile = folder / "transcript.txt"
+        meta  = folder / "metadata.txt"
 
-        if fpath.exists():
-            print(f"Skip existing file: {folder_name}/transcript.txt")
-            stats["skipped_existing"] += 1
-            # still mark archived so we never retry
-            mark_archived(vid)
+        if tfile.exists():
+            print(f"Skip existing: {tfile}")
             continue
 
         try:
@@ -182,22 +155,24 @@ def main():
                 f"Title: {title}\nVideoID: {vid}\nURL: {v['webpage_url']}\nDate: {date or ''}\n",
                 encoding="utf-8"
             )
-            fpath.write_text(text, encoding="utf-8")
-            print(f"Saved: {folder_name}/transcript.txt")
-            mark_archived(vid)
+            tfile.write_text(text, encoding="utf-8")
+            print(f"Saved: {tfile}")
             stats["saved"] += 1
         except (TranscriptsDisabled, NoTranscriptFound) as e:
-            print(f"No transcript: {vid} ({e})")
-            # record a small marker file so the run always has output to commit
+            print(f"No transcript via API for {vid}: {e}")
+            # Leave a marker; the later passes (yt-dlp / Whisper) will fill these
             (folder / "NO_TRANSCRIPT.txt").write_text(str(e), encoding="utf-8")
-            # do NOT mark archived here so you can later run a Whisper fallback if you want
+            meta.write_text(
+                f"Title: {title}\nVideoID: {vid}\nURL: {v['webpage_url']}\nDate: {date or ''}\n",
+                encoding="utf-8"
+            )
             stats["no_transcript"] += 1
         except Exception as e:
             print(f"Error on {vid}: {e}")
             (folder / "ERROR.txt").write_text(str(e), encoding="utf-8")
             stats["errors"] += 1
 
-    RUN_INDEX.write_text(json.dumps(stats, indent=2), encoding="utf-8")
+    LAST_RUN.write_text(json.dumps(stats, indent=2), encoding="utf-8")
     print("Run stats:", json.dumps(stats, indent=2))
 
 if __name__ == "__main__":
