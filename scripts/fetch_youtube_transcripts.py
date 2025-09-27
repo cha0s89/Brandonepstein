@@ -1,4 +1,4 @@
-import os, re, json, subprocess, sys
+import os, re, json, subprocess
 from pathlib import Path
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 
@@ -7,13 +7,16 @@ YT_SOURCE = os.getenv("YT_SOURCE", "").strip()
 MAX_VIDEOS = int(os.getenv("MAX_VIDEOS", "0") or "0")
 
 # Output: one folder per episode; idempotent + archived IDs
-OUTDIR = Path("data/transcripts/youtube/brandonepstein")
+ROOT = Path("data/transcripts/youtube")
+OUTDIR = ROOT / "brandonepstein"
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
-ARCHIVE = Path("data/transcripts/youtube/archive_ids.txt")
+ARCHIVE = ROOT / "archive_ids.txt"
 ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
 if not ARCHIVE.exists():
     ARCHIVE.write_text("", encoding="utf-8")
+
+RUN_INDEX = ROOT / "last_run.json"  # we always update this, so there's something to commit
 
 def is_archived(video_id: str) -> bool:
     return any(line.strip() == video_id for line in ARCHIVE.read_text(encoding="utf-8").splitlines())
@@ -31,7 +34,6 @@ def normalize_source(url: str) -> str:
     if not url:
         raise SystemExit("YT_SOURCE is empty. Set it in the workflow env.")
     url = url.strip()
-    # If it's a handle like https://www.youtube.com/@Something or @Something
     if url.startswith("@"):
         url = "https://www.youtube.com/" + url
     if "youtube.com/@" in url and not url.rstrip("/").endswith("/videos"):
@@ -47,31 +49,24 @@ def yt_dlp_json(cmd):
     return json.loads(r.stdout)
 
 def list_videos(url: str):
-    # 1) Try flat playlist (fast, works for /videos pages)
     base_cmd = ["yt-dlp", "-J", "--flat-playlist", "--no-warnings", url]
     if MAX_VIDEOS > 0:
         base_cmd = ["yt-dlp", "-J", "--flat-playlist", "-I", f"1:{MAX_VIDEOS}", "--no-warnings", url]
-
+    entries = []
     try:
         data = yt_dlp_json(base_cmd)
         entries = data.get("entries") or []
     except SystemExit:
-        entries = []
-
-    # 2) Fallback: non-flat parse (sometimes needed for custom channel layouts)
+        pass
     if not entries:
         try:
             data2 = yt_dlp_json(["yt-dlp", "-J", "--no-warnings", url])
             entries = data2.get("entries") or []
         except SystemExit:
-            entries = []
-
-    # 3) If still empty, tell the user the URL looks wrong.
+            pass
     if not entries:
         print(f"No videos found at URL:\n  {url}")
-        print("Open this URL in a browser. If it doesn't show the channel's Videos grid, use the correct Videos tab link.")
         raise SystemExit(1)
-
     videos = []
     for e in entries:
         if not e:
@@ -90,17 +85,14 @@ def list_videos(url: str):
 
 def fetch_transcript_chunks(video_id: str, langs=("en","en-US","en-GB")):
     tlist = YouTubeTranscriptApi.list_transcripts(video_id)
-    # Prefer human EN
     for lang in langs:
         try:
             return tlist.find_manually_created_transcript([lang]).fetch()
         except: pass
-    # Fallback: auto EN
     for lang in langs:
         try:
             return tlist.find_generated_transcript([lang]).fetch()
         except: pass
-    # Last resort: translate any to EN
     for t in tlist:
         if t.is_translatable:
             try:
@@ -119,18 +111,21 @@ def chunks_to_text(chunks):
 def main():
     src = normalize_source(YT_SOURCE)
     print(f"Using source: {src}")
-
     videos = list_videos(src)
     print(f"Found {len(videos)} videos in source")
 
-    saved = 0
+    stats = {"source": src, "total_listed": len(videos), "saved": 0, "skipped_existing": 0,
+             "skipped_archived": 0, "no_transcript": 0, "errors": 0, "processed_ids": []}
+
     for v in videos:
         vid = v["id"]
         if not vid:
             continue
+        stats["processed_ids"].append(vid)
 
         if is_archived(vid):
             print(f"Skip archived: {vid}")
+            stats["skipped_archived"] += 1
             continue
 
         title = v["title"]
@@ -142,30 +137,39 @@ def main():
         folder = OUTDIR / folder_name
         folder.mkdir(parents=True, exist_ok=True)
         fpath = folder / "transcript.txt"
+        meta = folder / "metadata.txt"
 
         if fpath.exists():
             print(f"Skip existing file: {folder_name}/transcript.txt")
+            stats["skipped_existing"] += 1
+            # still mark archived so we never retry
             mark_archived(vid)
             continue
 
         try:
             chunks = fetch_transcript_chunks(vid)
             text = chunks_to_text(chunks)
-            (folder / "metadata.txt").write_text(
+            meta.write_text(
                 f"Title: {title}\nVideoID: {vid}\nURL: {v['webpage_url']}\nDate: {date or ''}\n",
                 encoding="utf-8"
             )
             fpath.write_text(text, encoding="utf-8")
             print(f"Saved: {folder_name}/transcript.txt")
             mark_archived(vid)
-            saved += 1
+            stats["saved"] += 1
         except (TranscriptsDisabled, NoTranscriptFound) as e:
             print(f"No transcript: {vid} ({e})")
-            mark_archived(vid)
+            # record a small marker file so the run always has output to commit
+            (folder / "NO_TRANSCRIPT.txt").write_text(str(e), encoding="utf-8")
+            # do NOT mark archived here so you can later run a Whisper fallback if you want
+            stats["no_transcript"] += 1
         except Exception as e:
             print(f"Error on {vid}: {e}")
+            (folder / "ERROR.txt").write_text(str(e), encoding="utf-8")
+            stats["errors"] += 1
 
-    print(f"Done. Saved {saved}/{len(videos)} transcripts to {OUTDIR}")
+    RUN_INDEX.write_text(json.dumps(stats, indent=2), encoding="utf-8")
+    print("Run stats:", json.dumps(stats, indent=2))
 
 if __name__ == "__main__":
     main()
