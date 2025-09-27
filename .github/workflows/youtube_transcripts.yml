@@ -3,7 +3,11 @@ name: Fetch YouTube transcripts
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 9 * * 1"
+    - cron: "0 9 * * 1"   # Mondays 09:00 UTC
+
+# IMPORTANT: allow the job to push commits
+permissions:
+  contents: write
 
 jobs:
   pull-transcripts:
@@ -31,8 +35,13 @@ jobs:
 
       - name: Fetch transcripts from YouTube
         env:
+          # Set this to the channel or playlist you want
+          # Example: Brandon Epstein channel tab or Rich Roll:
+          # YT_SOURCE: https://www.youtube.com/@BrandonEpstein/videos
+          # YT_SOURCE: https://www.youtube.com/@RichRoll/videos
           YT_SOURCE: https://www.youtube.com/@BrandonEpstein/videos
-          MAX_VIDEOS: "5"   # your quick test
+          # Quick test limit; remove or make "" later to process all
+          MAX_VIDEOS: "5"
         run: |
           python scripts/fetch_youtube_transcripts.py
 
