@@ -50,13 +50,26 @@ jobs:
         run: |
           python scripts/fetch_youtube_transcripts.py
 
+      - name: Verify scripts present
+        run: |
+          echo "Listing scripts/"
+          ls -la scripts || true
+
       - name: Try yt-dlp captions for missing (VTT → TXT)
         run: |
-          python scripts/fill_with_ytdlp.py
+          if [ -f scripts/fill_with_ytdlp.py ]; then
+            python scripts/fill_with_ytdlp.py
+          else
+            echo "scripts/fill_with_ytdlp.py not found — skipping this pass."
+          fi
 
       - name: Fill remaining missing with Whisper (download audio + transcribe)
         run: |
-          python scripts/whisper_fill_missing.py
+          if [ -f scripts/whisper_fill_missing.py ]; then
+            python scripts/whisper_fill_missing.py
+          else
+            echo "scripts/whisper_fill_missing.py not found — skipping this pass."
+          fi
 
       - name: Show repo tree (after)
         run: |
