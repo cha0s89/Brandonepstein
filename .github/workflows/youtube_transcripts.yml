@@ -46,7 +46,7 @@ jobs:
       - name: Fetch transcripts from YouTube
         env:
           # Paste the correct Videos tab URL:
-          YT_SOURCE: https://www.youtube.com/@YOUR_HANDLE/videos
+          YT_SOURCE: https://www.youtube.com/@BrandonEpstein_/videos
           MAX_VIDEOS: "5"   # test limit
         run: |
           python scripts/fetch_youtube_transcripts.py
