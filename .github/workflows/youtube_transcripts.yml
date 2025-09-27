@@ -28,9 +28,7 @@ jobs:
       - name: Ensure .gitignore does NOT exclude data/
         run: |
           touch .gitignore
-          # remove any line that ignores data/ or transcripts/
           sed -i '/^data\/$/d;/^data\/\*$/d;/^transcripts\/$/d;/^transcripts\/\*$/d' .gitignore
-          # explicitly allow our output path
           grep -qxF '!data/transcripts/**' .gitignore || echo '!data/transcripts/**' >> .gitignore
 
       - name: Set up Python
@@ -41,15 +39,24 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install yt-dlp "youtube-transcript-api>=0.6.2,<1.0.0"
-          python -c "import importlib.metadata as m; print('yt-dlp version:', m.version('yt-dlp')); print('youtube-transcript-api version:', m.version('youtube-transcript-api'))"
+          pip install yt-dlp "youtube-transcript-api>=0.6.2,<1.0.0" faster-whisper==1.0.3
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          python -c "import importlib.metadata as m; print('yt-dlp version:', m.version('yt-dlp')); print('youtube-transcript-api version:', m.version('youtube-transcript-api')); import faster_whisper; print('faster-whisper OK')"
 
-      - name: Fetch transcripts from YouTube
+      - name: Fetch transcripts from YouTube (YouTube API path)
         env:
-          YT_SOURCE: https://www.youtube.com/@BrandonEpstein_/videos  # <-- your exact channel
-          MAX_VIDEOS: "5"  # quick test; set to "" later to pull all
+          YT_SOURCE: https://www.youtube.com/@BrandonEpstein_/videos
+          MAX_VIDEOS: "5"
         run: |
           python scripts/fetch_youtube_transcripts.py
+
+      - name: Try yt-dlp captions for missing (VTT → TXT)
+        run: |
+          python scripts/fill_with_ytdlp.py
+
+      - name: Fill remaining missing with Whisper (download audio + transcribe)
+        run: |
+          python scripts/whisper_fill_missing.py
 
       - name: Show repo tree (after)
         run: |
