@@ -39,7 +39,7 @@ jobs:
           # Example: Brandon Epstein channel tab or Rich Roll:
           # YT_SOURCE: https://www.youtube.com/@BrandonEpstein/videos
           # YT_SOURCE: https://www.youtube.com/@RichRoll/videos
-          YT_SOURCE: https://www.youtube.com/@BrandonEpstein/videos
+          YT_SOURCE: https://www.youtube.com/@BrandonEpstein_/videos
           # Quick test limit; remove or make "" later to process all
           MAX_VIDEOS: "5"
         run: |
