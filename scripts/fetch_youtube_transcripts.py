@@ -84,21 +84,50 @@ def list_videos(url: str):
     return videos
 
 def fetch_transcript_chunks(video_id: str, langs=("en","en-US","en-GB")):
-    tlist = YouTubeTranscriptApi.list_transcripts(video_id)
-    for lang in langs:
-        try:
-            return tlist.find_manually_created_transcript([lang]).fetch()
-        except: pass
-    for lang in langs:
-        try:
-            return tlist.find_generated_transcript([lang]).fetch()
-        except: pass
-    for t in tlist:
-        if t.is_translatable:
+    """
+    Prefer manually-created English, then auto English, then translate-any-to-English.
+    Falls back to get_transcript() if list_transcripts isn't available in the installed package.
+    """
+    # Try the modern API first
+    try:
+        tlist = YouTubeTranscriptApi.list_transcripts(video_id)
+
+        # Prefer human EN
+        for lang in langs:
             try:
-                return t.translate("en").fetch()
-            except: pass
-    raise NoTranscriptFound("No available transcript (manual/auto/translated).")
+                return tlist.find_manually_created_transcript([lang]).fetch()
+            except: 
+                pass
+        # Fallback: auto EN
+        for lang in langs:
+            try:
+                return tlist.find_generated_transcript([lang]).fetch()
+            except: 
+                pass
+        # Last resort: translate any to EN
+        for t in tlist:
+            if getattr(t, "is_translatable", False):
+                try:
+                    return t.translate("en").fetch()
+                except:
+                    pass
+
+        # If we reach here, no transcript via list_transcripts
+        raise NoTranscriptFound("No available transcript (manual/auto/translated).")
+
+    except AttributeError:
+        # Older package: use get_transcript API as a fallback
+        for lang in (["en", "en-US", "en-GB"]):
+            try:
+                chunks = YouTubeTranscriptApi.get_transcript(video_id, languages=[lang])
+                return chunks
+            except:
+                pass
+        # Try auto by requesting no language preference (may still fail)
+        try:
+            return YouTubeTranscriptApi.get_transcript(video_id)
+        except Exception as e:
+            raise NoTranscriptFound(f"get_transcript fallback failed: {e}")
 
 def chunks_to_text(chunks):
     lines = []
