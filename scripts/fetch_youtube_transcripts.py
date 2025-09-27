@@ -8,7 +8,7 @@ MAX_VIDEOS = int(os.getenv("MAX_VIDEOS", "0") or "0")
 
 # Output: one folder per episode; idempotent
 ROOT = Path("data/transcripts/youtube")
-OUTDIR = ROOT / "brandonepstein"
+OUTDIR = ROOT / "richroll"
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 LAST_RUN = ROOT / "last_run.json"   # stats written every run
