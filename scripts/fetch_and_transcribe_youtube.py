@@ -1,4 +1,9 @@
-import os, re, json, subprocess, sys, shutil
+import os
+import re
+import json
+import subprocess
+import sys
+import shutil
 from pathlib import Path
 
 try:
@@ -30,11 +35,11 @@ OUTDIR.mkdir(parents=True, exist_ok=True)
 
 def run_yt_dlp_list(url: str, max_videos=0) -> dict:
     cmd = [
-        "yt-dlp", "--flat-playlist", "-J", url
+        sys.executable, "-m", "yt_dlp", "--flat-playlist", "-J", url
     ]
     if max_videos > 0:
         cmd = [
-            "yt-dlp", "--flat-playlist", "-J", "-I", f"1:{max_videos}", url
+            sys.executable, "-m", "yt_dlp", "--flat-playlist", "-J", "-I", f"1:{max_videos}", url
         ]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
@@ -122,7 +127,7 @@ def main():
         if audio_out.exists():
             audio_out.unlink()
         yt_dl_cmd = [
-            "yt-dlp",
+            sys.executable, "-m", "yt_dlp",
             "-f", "bestaudio/best",
             "-x", "--audio-format", "m4a",
             "-o", str(audio_out),
