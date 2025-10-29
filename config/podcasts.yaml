@@ -1,0 +1,5 @@
+podcasts:
+  - name: "Rich Roll"
+    feed_url: "https://feeds.megaphone.fm/richroll"
+    max_episodes: 1
+    download_audio: true
