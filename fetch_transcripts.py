@@ -17,21 +17,67 @@ EP_DIR = OUT_DIR / "episodes"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 EP_DIR.mkdir(parents=True, exist_ok=True)
 
-def run_yt_dlp_list(url: str) -> dict:
+PROXY_ENV_VARS = (
+    "HTTP_PROXY",
+    "http_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+)
+
+def _env_without_proxies(env: dict) -> dict:
+    updated = env.copy()
+    for var in PROXY_ENV_VARS:
+        updated.pop(var, None)
+    return updated
+
+def run_yt_dlp_list(url: str):
     """
     Use yt-dlp to list ALL videos (no API key) as JSON.
     """
     # --flat-playlist: no downloads, just metadata
     # -J: dump JSON
     # -I 1:9999: index range large enough to grab all
-    cmd = [
+    base_cmd = [
         "yt-dlp", "--flat-playlist", "-J", "-I", "1:9999", url
     ]
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    if r.returncode != 0:
-        print(r.stderr)
-        sys.exit(1)
-    return json.loads(r.stdout)
+
+    original_env = os.environ.copy()
+    attempts = [
+        ("direct", base_cmd + ["--proxy", ""], _env_without_proxies(original_env)),
+        ("proxy", base_cmd, original_env),
+    ]
+
+    errors = []
+    for label, cmd, env in attempts:
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        if result.returncode == 0:
+            if label == "direct":
+                print("[INFO] yt-dlp succeeded without proxy")
+            else:
+                print("[INFO] yt-dlp fell back to proxy configuration")
+            return json.loads(result.stdout), env
+        stderr = result.stderr.strip()
+        errors.append((label, stderr))
+
+    for label, err in errors:
+        if err:
+            print(f"[ERROR] yt-dlp ({label}) failed:\n{err}", file=sys.stderr)
+    joined = "\n".join(err for _, err in errors if err)
+    if "Tunnel connection failed: 403" in joined:
+        print(
+            "[HINT] The configured HTTPS proxy rejected YouTube requests (403). "
+            "Disable the proxy or provide one that allows *.youtube.com.",
+            file=sys.stderr,
+        )
+    if "Failed to establish a new connection" in joined or "Network is unreachable" in joined:
+        print(
+            "[HINT] This environment cannot reach YouTube directly. "
+            "Ensure outbound HTTPS access to youtube.com is available before retrying.",
+            file=sys.stderr,
+        )
+    sys.exit(1)
 
 def safe_name(s: str) -> str:
     keep = "".join(c for c in s if c.isalnum() or c in (" ", "-", "_"))
@@ -66,7 +112,13 @@ def get_transcript_text(video_id: str) -> str:
 
 def main():
     print(f"[INFO] Listing videos from: {CHANNEL_URL}")
-    data = run_yt_dlp_list(CHANNEL_URL)
+    data, effective_env = run_yt_dlp_list(CHANNEL_URL)
+
+    # Ensure downstream libraries use the same proxy configuration that worked
+    # for yt-dlp. This matters because youtube-transcript-api honors
+    # environment proxy variables in the same way.
+    os.environ.clear()
+    os.environ.update(effective_env)
 
     # yt-dlp returns a top-level dict. For channel pages:
     # - 'entries' contains video entries with 'id' and 'title'

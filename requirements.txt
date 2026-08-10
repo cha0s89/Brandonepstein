@@ -2,3 +2,4 @@ youtube-transcript-api==0.6.2
 yt-dlp
 tqdm==4.66.4
 faster-whisper
+requests>=2.31.0
